@@ -83,9 +83,13 @@ The server will start on `http://0.0.0.0:3090` (or port specified in `.env`)
 
 ## Endpoints
 
+- `GET /` or `GET /health` - Health check endpoint
+  - Returns: JSON with service status, version, active streams, total connections
+  - Example: `{"status":"running","service":"binary-stream-broker","version":"0.1.0","active_streams":1,"total_connections":2}`
+
 - `POST /ingest/:stream_id` - Ingest binary frame (WebP format)
   - Body: Raw WebP binary data
-  - Returns: `200 OK` if broadcasted, `202 Accepted` if no clients connected
+  - Returns: `200 OK` if broadcasted, `202 Accepted` if no clients connected or channel closed
 
 - `GET /ws/:stream_id` - WebSocket connection for clients
   - Upgrades to WebSocket protocol
@@ -190,4 +194,6 @@ RUST_LOG=debug cargo run
 - Supports hundreds of concurrent WebSocket clients
 - Automatic frame dropping on client lag (backpressure handling)
 - Zero-copy frame forwarding using `Bytes` smart pointer
+- Health check endpoint for monitoring
+- Graceful error handling (202 Accepted instead of 500 for no clients)
 

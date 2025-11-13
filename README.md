@@ -43,14 +43,21 @@ This system implements a decoupled Publish/Subscribe (Pub/Sub) pattern with thre
 
 ### 1. Start the Broker (Rust/Axum)
 
-**Option A: With HTTPS/HTTP/2 (Recommended)**
+**Option A: Docker (Recommended)**
+```bash
+cd ingest-server
+docker compose up -d --build
+```
+This will automatically setup Caddy with HTTPS/HTTP/2 on port 3090.
+
+**Option B: Native with Caddy**
 ```bash
 cd ingest-server
 USE_CADDY=true ./run.sh
 ```
 This will automatically setup Caddy with HTTPS/HTTP/2 on port 3090.
 
-**Option B: Direct HTTP mode**
+**Option C: Direct HTTP mode**
 ```bash
 cd ingest-server
 ./run.sh
@@ -59,7 +66,8 @@ cargo run
 ```
 
 The broker will start on:
-- **With Caddy**: `https://localhost:3090` (HTTPS/HTTP/2)
+- **With Docker/Caddy**: `https://localhost:3090` (HTTPS/HTTP/2)
+- **With Native Caddy**: `https://localhost:3090` (HTTPS/HTTP/2)
 - **Direct**: `http://0.0.0.0:3090` (HTTP/1.1)
 
 ### 2. Start the Producer (Python)
@@ -139,8 +147,9 @@ Then open `http://localhost:3092` in your browser and click "Connect".
 - **Features**:
   - High-performance rendering with `createImageBitmap`
   - Auto-reconnect (3 second delay)
-  - Real-time metrics display
-  - Frame capture
+  - Real-time metrics display (FPS, MB/s, Latency in status bar)
+  - Detailed metrics panel (FPS, Resolution, Frames Received, Dropped Frames)
+  - Frame capture functionality
   - HTTP server on port 3092
 
 ## Configuration
@@ -150,11 +159,14 @@ Then open `http://localhost:3092` in your browser and click "Connect".
 **Environment Variables:**
 - `RTSP_URL`: RTSP stream URL (default: `rtsp://admin:KAQSML@172.16.6.77:554`)
 - `BROKER_URL`: Broker URL (auto-generated from `USE_HTTPS` and `BROKER_PORT`)
-- `USE_HTTPS`: Use HTTPS (default: `false`)
+- `USE_HTTPS`: Use HTTPS (default: `true` for Docker/Caddy setup)
 - `BROKER_PORT`: Broker port (default: `3090` for Caddy, `3091` for direct)
 - `VERIFY_SSL`: Verify SSL certificates (default: `false` for self-signed)
 - `STREAM_ID`: Stream identifier (default: `stream1`)
 - `TARGET_FPS`: Target frames per second (default: `30`)
+- `RUST_LOG`: Logging level for detailed debugging (e.g., `RUST_LOG=debug`)
+
+**Note**: Actual FPS depends on RTSP stream frame rate. If RTSP stream only sends 6-7 FPS, producer cannot exceed that rate.
 
 **Using `.env` file (Recommended):**
 ```bash
@@ -185,16 +197,22 @@ cp .env.example .env
 - **Server Port**: `3092` (configurable in `server.py`)
 - **UI Configuration**:
   - **Broker URL**: 
-    - With Caddy: `wss://localhost:3090/ws/stream1` (WSS for HTTPS)
-    - Direct: `ws://localhost:3090/ws/stream1` (WS for HTTP)
-  - **Stream ID**: Must match producer's `STREAM_ID`
+    - With Docker/Caddy: `wss://localhost:3090` (default, auto-completes to `/ws/stream1`)
+    - Direct HTTP: `ws://localhost:3091` (auto-completes to `/ws/stream1`)
+  - **Stream ID**: Must match producer's `STREAM_ID` (default: `stream1`)
+- **Real-time Metrics** (displayed in status bar):
+  - **FPS**: Frames per second (updates every second)
+  - **MB/s**: Bandwidth in megabytes per second (updates every second)
+  - **Latency**: Approximate latency in milliseconds
 
 ## Performance
 
-- **Frame Rate**: 30 FPS (configurable)
+- **Frame Rate**: Up to 30 FPS (limited by RTSP stream rate)
 - **Latency**: < 200ms end-to-end
 - **Concurrent Clients**: Supports hundreds of WebSocket connections
 - **Memory**: Efficient zero-copy frame forwarding
+- **Real-time Monitoring**: FPS, MB/s, and latency displayed in web client status bar
+- **Health Checks**: Built-in health check endpoints for service monitoring
 
 ## Design Decisions
 
@@ -297,6 +315,18 @@ cargo run
 - Check for frame dropping in metrics
 - Reduce target FPS if needed
 - With Caddy, ensure HTTP/2 is enabled (check Caddy logs)
+
+### Low FPS (6-7 FPS)
+
+- **Most Common Cause**: RTSP stream from camera only sends 6-7 FPS
+- Check RTSP stream frame rate: `ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 rtsp://your-camera-url`
+- Verify producer logs show actual FPS: `"Streaming at X.X FPS"`
+- If RTSP stream is 6-7 FPS, this is normal and cannot be increased without changing camera settings
+- Enable debug logging: Set `RUST_LOG=debug` or check producer logs for timing details
+- Check for bottlenecks in:
+  - RTSP read time (should be < 100ms per frame)
+  - WebP encoding time (should be < 50ms per frame)
+  - HTTP POST time (should be < 50ms per frame)
 
 ## License
 

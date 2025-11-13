@@ -27,8 +27,9 @@ Ini akan:
 ### Access Endpoints
 
 - **HTTPS/HTTP/2**: `https://localhost:3090`
-- **Direct HTTP**: `http://localhost:3091` (optional)
+- **Direct HTTP**: `http://localhost:3091` (optional, for direct access)
 - **Health Check**: `curl -k https://localhost:3090/health`
+  - Returns JSON: `{"status":"running","service":"binary-stream-broker","version":"0.1.0","active_streams":0,"total_connections":0}`
 
 ## Docker Compose Commands
 
@@ -104,8 +105,15 @@ services:
                                       │   Browser   │ ◄──────────────────────────┘
                                       │   Client    │      WebSocket
                                       │  (HTML/JS)  │      /ws/:stream_id
+                                      │             │      Real-time: FPS, MB/s
                                       └─────────────┘
 ```
+
+**Container Details:**
+- **ingest-server**: Axum Rust server (internal, port 3091)
+- **caddy**: Reverse proxy with HTTPS/HTTP/2 (external, port 3090)
+- **Network**: `broker-network` (bridge, internal communication)
+- **Volumes**: `caddy-data`, `caddy-config` (persistent storage)
 
 ## Troubleshooting
 
@@ -186,4 +194,41 @@ Docker Compose creates volumes for:
 - `caddy-config`: Caddy configuration cache
 
 These persist between container restarts.
+
+## Health Monitoring
+
+### Health Check Endpoint
+
+Both services have health checks:
+- **Ingest Server**: `curl http://localhost:3091/health`
+- **Through Caddy**: `curl -k https://localhost:3090/health`
+
+Health check returns:
+```json
+{
+  "status": "running",
+  "service": "binary-stream-broker",
+  "version": "0.1.0",
+  "active_streams": 1,
+  "total_connections": 2,
+  "endpoints": {
+    "ingest": "POST /ingest/:stream_id",
+    "websocket": "GET /ws/:stream_id",
+    "health": "GET /health"
+  }
+}
+```
+
+### Monitoring Commands
+
+```bash
+# Check container health
+docker compose ps
+
+# View real-time logs
+docker compose logs -f
+
+# Check service health
+curl -k https://localhost:3090/health | jq
+```
 

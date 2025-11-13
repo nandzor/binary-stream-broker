@@ -8,8 +8,10 @@ Python service that captures RTSP video streams, transcodes frames to WebP forma
 - WebP frame encoding (better compression than JPEG)
 - HTTP/2 POST to broker (multiplexing, header compression)
 - Automatic reconnection on stream failure
-- FPS regulation (30 FPS default)
+- FPS regulation (30 FPS default, but limited by RTSP stream rate)
 - Two-loop pattern for resilience
+- Detailed logging for performance analysis (timing for read, encode, send)
+- Real-time FPS monitoring and reporting
 
 ## Installation
 
@@ -171,3 +173,31 @@ python test_producer.py
 
 - Verify `USE_HTTPS=false` and `BROKER_PORT=3091` are set
 - Check that Axum server is running on port 3091
+
+### Low FPS (6-7 FPS instead of 30)
+
+**Most Common Cause**: RTSP stream from camera only sends 6-7 FPS
+
+**Diagnosis Steps**:
+1. Check producer logs for actual FPS: `"Streaming at X.X FPS"`
+2. Verify RTSP stream frame rate:
+   ```bash
+   ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 rtsp://your-camera-url
+   ```
+3. Enable debug logging to see timing:
+   ```bash
+   # Set logging level to DEBUG in .env or environment
+   # Check logs for: "RTSP read took Xms", "Frame encoding took Xms", "Frame sent in Xms"
+   ```
+
+**Possible Causes**:
+- RTSP stream frame rate is 6-7 FPS (most common - check camera settings)
+- Network latency causing delays
+- WebP encoding taking too long (check encoding time in logs)
+- HTTP POST taking too long (check send time in logs)
+
+**Solutions**:
+- If RTSP stream is 6-7 FPS: This is normal, cannot exceed stream rate
+- Check camera settings for higher frame rate stream profile
+- Reduce WebP quality if encoding is slow: Edit `process_frame()` quality parameter
+- Check network conditions if HTTP POST is slow

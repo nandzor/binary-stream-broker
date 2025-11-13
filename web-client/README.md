@@ -19,7 +19,12 @@ python3 server.py
 - WebSocket client with auto-reconnect (3 second delay)
 - High-performance rendering using `createImageBitmap` (background thread decoding)
 - WebP format support
-- Real-time metrics (FPS, latency, frame count)
+- Real-time metrics display in status bar:
+  - **FPS**: Frames per second (updates every second)
+  - **MB/s**: Bandwidth in megabytes per second (updates every second)
+  - **Latency**: Approximate latency in milliseconds
+- Detailed metrics panel (toggle with "Toggle Stats" button):
+  - FPS, Resolution, Frames Received, Dropped Frames
 - Responsive UI with modern design
 - Frame capture functionality
 
@@ -69,12 +74,26 @@ You can also open `index.html` directly in your browser, but CORS restrictions m
 
 The player can be configured via the UI:
 
-- **Broker URL**: WebSocket URL
-  - **With Docker/Caddy (HTTPS)**: `wss://localhost:3090/ws/stream1` (default)
-  - **Direct HTTP**: `ws://localhost:3091/ws/stream1`
+- **Broker URL**: WebSocket URL (base URL only, `/ws/stream_id` is auto-appended)
+  - **With Docker/Caddy (HTTPS)**: `wss://localhost:3090` (default)
+  - **Direct HTTP**: `ws://localhost:3091`
 - **Stream ID**: Must match producer's `STREAM_ID` (default: `stream1`)
 
 **Note**: When using HTTPS with self-signed certificates, your browser will show a security warning. Click "Advanced" → "Proceed to localhost" to continue.
+
+### Real-time Metrics
+
+The status bar displays real-time metrics that update every second:
+
+- **FPS**: Number of frames rendered per second
+- **MB/s**: Bandwidth consumption in megabytes per second (2 decimal precision)
+- **Latency**: Approximate latency from last frame received
+
+Click "Toggle Stats" to see detailed metrics panel with:
+- FPS counter
+- Resolution (width x height)
+- Total frames received
+- Dropped frames count
 
 ## Server Configuration
 
@@ -98,6 +117,8 @@ PORT = 3092  # Change to your preferred port
 - **Decoding**: Background thread decoding prevents UI blocking
 - **Rendering**: Optimized canvas rendering for smooth playback
 - **Memory**: Efficient frame handling with automatic cleanup
+- **Metrics**: Real-time FPS and bandwidth monitoring
+- **Update Rate**: Metrics update every 1 second for smooth display
 
 ## Troubleshooting
 
