@@ -1,0 +1,18 @@
+# Example override file for custom configuration
+# Copy this to docker-compose.override.yml and modify as needed
+
+version: '3.8'
+
+services:
+  ingest-server:
+    environment:
+      - RUST_LOG=ingest_server=debug
+    # Uncomment to mount .env file
+    # volumes:
+    #   - ./.env:/app/.env:ro
+
+  caddy:
+    # Uncomment to use custom Caddyfile
+    # volumes:
+    #   - ./Caddyfile.custom:/etc/caddy/Caddyfile:ro
+

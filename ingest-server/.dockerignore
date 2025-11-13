@@ -1,0 +1,12 @@
+target/
+.git/
+.gitignore
+*.log
+*.bak
+*.tmp
+.env
+caddy/
+certs/
+bin/
+.DS_Store
+

@@ -1,0 +1,111 @@
+feat: Implement HTTPS/HTTP/2 with Caddy and Docker setup
+
+Core Changes (16 points):
+
+1. Docker Setup
+   - Add Dockerfile for multi-stage Rust build (ingest-server)
+   - Add Dockerfile.caddy for Caddy reverse proxy
+   - Add docker-compose.yml with 2 services (ingest-server + caddy)
+   - Add docker-run.sh helper script for one-command setup
+   - Add .dockerignore for optimized builds
+
+2. Caddy Integration
+   - Add Caddyfile for HTTPS/HTTP/2 reverse proxy
+   - Configure self-signed TLS for localhost development
+   - Automatic WebSocket upgrade support
+   - Port 3090 (HTTPS/HTTP/2) external, 3091 (HTTP) internal
+
+3. Producer Updates
+   - Default to HTTPS (USE_HTTPS=true)
+   - Support SSL verification toggle (VERIFY_SSL)
+   - Auto-detect protocol (HTTP/HTTPS) from configuration
+   - Update .env.example with HTTPS configuration
+   - Enhanced logging with protocol and SSL status
+
+4. Web Client Updates
+   - Default WebSocket URL: wss://localhost:3090
+   - WebSocket URL normalization to prevent duplication
+   - Support both WSS (HTTPS) and WS (HTTP) protocols
+   - Improved placeholder text with protocol options
+
+5. Health Check Endpoint
+   - Add GET / and GET /health endpoints
+   - Return JSON with service status, version, active streams
+   - Display total WebSocket connections
+   - List available endpoints
+
+6. Error Handling Improvements
+   - Change channel closed error from 500 to 202 Accepted
+   - Better handling when no WebSocket clients connected
+   - Producer no longer receives 500 errors during startup
+
+7. Configuration Management
+   - Add .env.example for ingest-server
+   - Update producer .env.example with HTTPS options
+   - Environment variable precedence handling
+   - Explicit .env file path resolution
+
+8. Port Configuration
+   - Ingest server: Port 3091 (internal, behind Caddy)
+   - Caddy: Port 3090 (external, HTTPS/HTTP/2)
+   - Web client server: Port 3092 (unchanged)
+   - Update all default configurations
+
+9. Documentation Updates
+   - Add README.docker.md with Docker setup guide
+   - Update main README.md with HTTPS/HTTP/2 instructions
+   - Update producer README.md with Docker/Caddy setup
+   - Update web-client README.md with WSS configuration
+   - Add troubleshooting sections for HTTPS
+
+10. Rust Code Updates
+    - Update Rust version to 1.82 (support Cargo.lock v4)
+    - Add serde_json dependency for JSON responses
+    - Improve error handling in http_ingest_handler
+    - Better status code handling (202 vs 500)
+
+11. Script Improvements
+    - Update run.sh with Caddy support
+    - Add setup-caddy.sh for Caddy installation
+    - Add docker-run.sh for Docker workflow
+    - Make all scripts executable
+
+12. Network Architecture
+    - Docker network: broker-network (bridge)
+    - Service discovery: ingest-server:3091 (internal)
+    - Volume persistence for Caddy data/config
+    - Health checks for both services
+
+13. Security Enhancements
+    - TLS termination at Caddy layer
+    - Self-signed certificates for development
+    - SSL verification toggle for producers
+    - Non-root user in Docker containers
+
+14. Performance Optimizations
+    - HTTP/2 enabled by default in Caddy
+    - Connection reuse with keep-alive
+    - Efficient reverse proxy configuration
+    - Health check monitoring
+
+15. Developer Experience
+    - One-command Docker setup (docker compose up -d)
+    - Clear error messages and logging
+    - Comprehensive documentation
+    - Example configuration files
+
+16. Production Readiness
+    - Support for Let's Encrypt certificates
+    - Scalable architecture (separate containers)
+    - Health check endpoints for monitoring
+    - Graceful error handling
+
+Breaking Changes:
+- Default producer now uses HTTPS (port 3090) instead of HTTP
+- Ingest server default port changed to 3091 (internal)
+- Web client default WebSocket URL changed to WSS
+
+Migration Guide:
+- Update producer .env: USE_HTTPS=true, BROKER_PORT=3090
+- Update web client: Use wss://localhost:3090/ws/stream1
+- For direct HTTP: USE_HTTPS=false, BROKER_PORT=3091

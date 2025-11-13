@@ -1,0 +1,36 @@
+# Caddy configuration for HTTPS/HTTP/2
+# Caddy automatically handles TLS certificates
+# HTTP/2 is enabled by default in Caddy 2.x
+
+# Development: Self-signed certificate for localhost
+localhost:3090 {
+    # Use internal self-signed certificate
+    tls internal
+    
+    # Reverse proxy to Axum server (internal port)
+    # In Docker, use service name instead of localhost
+    reverse_proxy ingest-server:3091 {
+        # WebSocket support - Caddy automatically handles WebSocket upgrades
+        # Preserve headers for proper routing
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+
+# Production: With domain (uncomment and configure)
+# your-domain.com {
+#     # Caddy will automatically get Let's Encrypt certificate
+#     reverse_proxy 127.0.0.1:3091 {
+#         header_up Connection {>Connection}
+#         header_up Upgrade {>Upgrade}
+#         header_up Host {host}
+#         header_up X-Real-IP {remote}
+#         header_up X-Forwarded-For {remote}
+#         header_up X-Forwarded-Proto {scheme}
+#         transport http {
+#             versions h2c 1.1
+#         }
+#     }
+# }

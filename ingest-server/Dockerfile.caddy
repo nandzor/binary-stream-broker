@@ -1,0 +1,14 @@
+# Caddy reverse proxy with HTTPS/HTTP/2
+FROM caddy:2.7-alpine
+
+WORKDIR /app
+
+# Copy Caddyfile
+COPY Caddyfile /etc/caddy/Caddyfile
+
+# Expose HTTPS port
+EXPOSE 3090
+
+# Run Caddy
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+

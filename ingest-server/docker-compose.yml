@@ -1,0 +1,52 @@
+services:
+  # Axum ingest server
+  ingest-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: binary-stream-broker
+    environment:
+      - BIND_ADDRESS=0.0.0.0
+      - PORT=3091
+      - RUST_LOG=ingest_server=info,tower_http=debug
+    ports:
+      - "3091:3091"  # Direct HTTP access (optional)
+    networks:
+      - broker-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3091/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # Caddy reverse proxy with HTTPS/HTTP/2
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    container_name: binary-stream-broker-caddy
+    ports:
+      - "3090:3090"  # HTTPS/HTTP/2
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - broker-network
+    depends_on:
+      - ingest-server
+    restart: unless-stopped
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+
+networks:
+  broker-network:
+    driver: bridge
+
+volumes:
+  caddy-data:
+    driver: local
+  caddy-config:
+    driver: local
+
