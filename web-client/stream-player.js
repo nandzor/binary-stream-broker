@@ -167,6 +167,11 @@ class RTSPStreamPlayer {
         
         this.stopMetrics();
         this.updateStatus('Disconnected', false);
+        
+        // Reset metrics display when disconnected
+        document.getElementById('fpsText').textContent = 'FPS: 0';
+        document.getElementById('bandwidthText').textContent = 'MB/s: 0.00';
+        document.getElementById('latencyText').textContent = 'Latency: --ms';
     }
     
     /**
@@ -186,16 +191,17 @@ class RTSPStreamPlayer {
      * Start metrics collection
      */
     startMetrics() {
-        // FPS calculation
+        // FPS calculation - frames per second
         this.fpsInterval = setInterval(() => {
             this.metrics.fps = this.metrics.framesRendered;
             this.metrics.framesRendered = 0;
             this.updateMetricsDisplay();
         }, 1000);
         
-        // Bandwidth calculation
+        // Bandwidth calculation - MB per second
         this.bandwidthInterval = setInterval(() => {
-            this.metrics.bandwidth = this.metrics.bytesReceived / 1024; // KB/s
+            // Convert bytes to MB: bytes / (1024 * 1024)
+            this.metrics.bandwidth = this.metrics.bytesReceived / (1024 * 1024); // MB/s
             this.metrics.bytesReceived = 0;
             this.updateMetricsDisplay();
         }, 1000);
@@ -219,14 +225,21 @@ class RTSPStreamPlayer {
      * Update metrics display
      */
     updateMetricsDisplay() {
+        // Update detailed metrics panel
         document.getElementById('fpsCounter').textContent = this.metrics.fps;
         document.getElementById('frameCounter').textContent = this.metrics.framesReceived;
         document.getElementById('droppedFrames').textContent = this.metrics.framesDropped;
+        
+        // Update status bar with real-time info
+        document.getElementById('fpsText').textContent = `FPS: ${this.metrics.fps}`;
+        document.getElementById('bandwidthText').textContent = `MB/s: ${this.metrics.bandwidth.toFixed(2)}`;
         
         // Calculate latency (simplified - would need server timestamp for real latency)
         if (this.metrics.lastFrameTime > 0) {
             const latency = Date.now() - this.metrics.lastFrameTime;
             document.getElementById('latencyText').textContent = `Latency: ~${latency}ms`;
+        } else {
+            document.getElementById('latencyText').textContent = `Latency: --ms`;
         }
     }
     

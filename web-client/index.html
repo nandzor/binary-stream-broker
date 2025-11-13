@@ -46,12 +46,18 @@
         .status-bar {
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 20px;
             padding: 12px 20px;
             background: rgba(255, 255, 255, 0.05);
             border-radius: 8px;
             margin-bottom: 20px;
             font-size: 14px;
+            flex-wrap: wrap;
+        }
+
+        .status-bar span {
+            white-space: nowrap;
+            font-family: 'Courier New', monospace;
         }
 
         .status-indicator {
@@ -188,6 +194,8 @@
         <div class="status-bar">
             <div class="status-indicator" id="statusIndicator"></div>
             <span id="statusText">Disconnected</span>
+            <span id="fpsText">FPS: 0</span>
+            <span id="bandwidthText">MB/s: 0.00</span>
             <span id="latencyText">Latency: --ms</span>
         </div>
 
