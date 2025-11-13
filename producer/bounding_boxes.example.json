@@ -1,0 +1,27 @@
+[
+  {
+    "x1": 100,
+    "y1": 100,
+    "x2": 300,
+    "y2": 300,
+    "color": "0,255,0",
+    "thickness": 2,
+    "label": "Region 1",
+    "font_scale": 0.6,
+    "label_color": "255,255,255",
+    "use_percentage": false
+  },
+  {
+    "x1": 0.1,
+    "y1": 0.1,
+    "x2": 0.5,
+    "y2": 0.5,
+    "color": "255,0,0",
+    "thickness": 3,
+    "label": "Region 2 (Percentage)",
+    "font_scale": 0.7,
+    "label_color": "255,255,0",
+    "use_percentage": true
+  }
+]
+
