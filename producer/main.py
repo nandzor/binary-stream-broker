@@ -58,6 +58,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Setup FPS logger for file output
+fps_logger = logging.getLogger('rtsp_fps')
+fps_logger.setLevel(logging.INFO)
+fps_logger.propagate = False  # Don't propagate to root logger
+
+# Create log file handler
+script_dir = os.path.dirname(os.path.abspath(__file__))
+fps_log_path = os.path.join(script_dir, 'rtsp-fps.log')
+fps_file_handler = logging.FileHandler(fps_log_path, mode='a', encoding='utf-8')
+fps_file_handler.setLevel(logging.INFO)
+fps_file_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+fps_logger.addHandler(fps_file_handler)
+
+# Write header if file is new or empty
+if not os.path.exists(fps_log_path) or os.path.getsize(fps_log_path) == 0:
+    header = """# RTSP FPS Monitoring Log
+# Format: timestamp - Output_FPS=X.XX,RTSP_Input_FPS=X.XX,Duplicated=N,Duplicated_Pct=X.XX,Frames_Sent=N,Frames_Read=N
+# Output_FPS: Frames sent to ingest-server per second
+# RTSP_Input_FPS: Actual frames read from RTSP stream per second
+# Duplicated: Number of frames duplicated to maintain target FPS
+# Duplicated_Pct: Percentage of duplicated frames
+# Frames_Sent: Total frames sent to ingest-server in this interval
+# Frames_Read: Total frames read from RTSP in this interval
+#
+"""
+    with open(fps_log_path, 'w', encoding='utf-8') as f:
+        f.write(header)
+
 
 class RTSPProducer:
     """Producer that reads RTSP stream, transcodes to WebP, and sends to broker"""
@@ -87,7 +115,8 @@ class RTSPProducer:
         
         # Performance tracking
         self.frames_sent = 0
-        self.last_fps_check = time.time()
+        self.frames_read = 0  # Track frames read from RTSP
+        self.last_fps_check = time.perf_counter()  # Use perf_counter for consistency
         self.frames_duplicated = 0  # Track duplicated frames for 30 FPS
     
     def initialize_client(self):
@@ -183,8 +212,16 @@ class RTSPProducer:
         return x1, y1, x2, y2
     
     def generate_random_boxes(self, frame_width: int, frame_height: int) -> List[Dict]:
-        """Generate random bounding boxes with random positions, sizes, and colors"""
+        """Generate random bounding boxes with random positions, sizes, and colors
+        
+        IMPORTANT: This function is called for EVERY frame (including duplicated frames)
+        to ensure random boxes change position for each frame sent to the server.
+        """
         boxes = []
+        
+        # Use high-precision time as seed to ensure different random values each call
+        # This ensures random boxes are different even for duplicated frames processed quickly
+        random.seed(int(time.perf_counter() * 1000000))  # Use microseconds for better uniqueness
         
         for i in range(self.random_box_count):
             # Random size between min and max
@@ -402,69 +439,110 @@ class RTSPProducer:
                 time.sleep(DEFAULT_RECONNECT_DELAY)
                 continue
             
-            # Inner loop: reads frames from RTSP stream
-            last_frame_time = 0
-            while self.cap.isOpened():
-                try:
-                    current_time = time.time()
-                    
-                    # FPS regulation - ensure we maintain exactly target FPS
-                    elapsed = current_time - last_frame_time
-                    
-                    # If we have a buffered frame and need to maintain 30 FPS, duplicate it
-                    if elapsed >= self.frame_interval:
-                        # Try to read new frame from RTSP
-                        ret, frame = self.cap.read()
-                        
-                        if ret:
-                            # New frame received, store original frame for duplication
-                            # Note: We store BEFORE drawing bounding boxes, so duplicated frames
-                            # will also have bounding boxes drawn (which is correct for 30 FPS)
-                            self.last_frame = frame.copy()
-                            self.last_frame_time = current_time
-                        elif self.last_frame is not None:
-                            # No new frame, but we have a buffered frame - duplicate it for 30 FPS
-                            # Copy the buffered frame (will have bounding boxes drawn in process_frame)
-                            frame = self.last_frame.copy()
-                            self.frames_duplicated += 1
-                        else:
-                            # No frame available and no buffer, wait and retry
-                            logger.warning("No frame available, reconnecting...")
-                            break
-                        
-                        # Process frame: Draw Bounding Boxes → WebP → Binary
-                        # draw_bounding_boxes() modifies frame in-place
-                        # frame_data adalah binary bytes dari WebP yang sudah include bounding boxes
-                        frame_data = self.process_frame(frame)
-                        if frame_data:
-                            # Kirim binary WebP data ke ingest-server via HTTP/2
-                            # WebP sudah include bounding boxes yang di-draw pada frame
-                            if self.send_frame(frame_data):
-                                self.frames_sent += 1
-                                last_frame_time = time.time()
-                    else:
-                        # Not time yet, sleep to maintain FPS
-                        sleep_time = self.frame_interval - elapsed
-                        time.sleep(sleep_time)
-                        continue
-                    
-                    # FPS monitoring
-                    if current_time - self.last_fps_check >= DEFAULT_FPS_CHECK_INTERVAL:
-                        fps = self.frames_sent / DEFAULT_FPS_CHECK_INTERVAL
-                        dup_pct = (self.frames_duplicated / max(self.frames_sent, 1)) * 100
-                        logger.info(f"Streaming at {fps:.1f} FPS (duplicated: {self.frames_duplicated} frames, {dup_pct:.1f}%)")
-                        self.frames_sent = 0
-                        self.frames_duplicated = 0
-                        self.last_fps_check = current_time
+            try:
+                # Inner loop: reads frames and maintains 30 FPS output
+                # Initialize timing for precise FPS control
+                self.last_frame_time = time.perf_counter()
+                next_frame_time = self.last_frame_time
+                last_rtsp_read_time = 0  # Track when we last successfully read from RTSP
                 
-                except Exception as e:
-                    logger.error(f"Error in frame loop: {e}")
-                    break  # Break inner loop, triggers reconnection
+                while self.cap.isOpened():
+                    try:
+                        current_time = time.perf_counter()
+                        
+                        # CRITICAL: Always attempt to send frame every frame_interval (33.33ms for 30 FPS)
+                        # This loop ensures we maintain exactly 30 FPS output regardless of RTSP input rate
+                        if current_time >= next_frame_time:
+                            # Check if enough time has passed since last RTSP read to consider it a new frame
+                            time_since_last_read = current_time - last_rtsp_read_time
+                            
+                            # Try to read new frame from RTSP
+                            ret, frame = self.cap.read()
+                            
+                            # Determine if this is a new frame or should use duplicate
+                            # If we read successfully AND enough time has passed, it's a new frame
+                            if ret and (time_since_last_read >= self.frame_interval or last_rtsp_read_time == 0):
+                                # New frame received - store original (before bounding boxes)
+                                self.last_frame = frame.copy()
+                                self.last_frame_time = current_time
+                                last_rtsp_read_time = current_time
+                                is_duplicated = False
+                                self.frames_read += 1
+                            elif self.last_frame is not None:
+                                # Not enough time passed or read failed - use last frame (duplicate for 30 FPS)
+                                frame = self.last_frame.copy()
+                                is_duplicated = True
+                                self.frames_duplicated += 1
+                            else:
+                                # No frame available and no buffer
+                                logger.warning("No frame available, reconnecting...")
+                                break
+                            
+                            # Process and send frame
+                            frame_data = self.process_frame(frame)
+                            if frame_data:
+                                if self.send_frame(frame_data):
+                                    self.frames_sent += 1
+                                    
+                                    # Calculate next frame time (ideal timing for 30 FPS)
+                                    process_end_time = time.perf_counter()
+                                    ideal_next_time = next_frame_time + self.frame_interval
+                                    
+                                    # If we're behind, catch up immediately
+                                    if process_end_time >= ideal_next_time:
+                                        next_frame_time = process_end_time
+                                    else:
+                                        next_frame_time = ideal_next_time
+                                    
+                                    # Sleep only if we have time
+                                    sleep_time = next_frame_time - time.perf_counter()
+                                    if sleep_time > 0.001:  # Only sleep if > 1ms
+                                        time.sleep(sleep_time)
+                        else:
+                            # Not time yet - keep reading RTSP to get fresh frames
+                            # But don't process them until it's time
+                            self.cap.read()  # Discard frame to keep buffer fresh
+                            
+                            # Sleep until next frame time
+                            sleep_time = next_frame_time - current_time
+                            if sleep_time > 0.001:
+                                time.sleep(sleep_time)
+                        
+                        # FPS monitoring
+                        if current_time - self.last_fps_check >= DEFAULT_FPS_CHECK_INTERVAL:
+                            fps = self.frames_sent / DEFAULT_FPS_CHECK_INTERVAL
+                            rtsp_fps = self.frames_read / DEFAULT_FPS_CHECK_INTERVAL
+                            dup_pct = (self.frames_duplicated / max(self.frames_sent, 1)) * 100
+                            
+                            # Console log (human-readable)
+                            logger.info(f"Streaming at {fps:.1f} FPS | RTSP Input: {rtsp_fps:.1f} FPS | Duplicated: {self.frames_duplicated} ({dup_pct:.1f}%)")
+                            logger.info(f"  Frames Read from RTSP: {self.frames_read} | Frames Sent to Ingest-Server: {self.frames_sent}")
+                            
+                            # File log (machine-readable format)
+                            # fps_logger is defined at module level and accessible here
+                            fps_logger.info(
+                                f"Output_FPS={fps:.2f},"
+                                f"RTSP_Input_FPS={rtsp_fps:.2f},"
+                                f"Duplicated={self.frames_duplicated},"
+                                f"Duplicated_Pct={dup_pct:.2f},"
+                                f"Frames_Sent={self.frames_sent},"
+                                f"Frames_Read={self.frames_read}"
+                            )
+                            
+                            self.frames_sent = 0
+                            self.frames_read = 0
+                            self.frames_duplicated = 0
+                            self.last_fps_check = current_time
+                    
+                    except Exception as e:
+                        logger.error(f"Error in frame loop: {e}")
+                        break  # Break inner loop, triggers reconnection
             
-            # Cleanup and reconnect
-            if self.cap:
-                self.cap.release()
-                self.cap = None
+            finally:
+                # Cleanup RTSP connection
+                if self.cap:
+                    self.cap.release()
+                    self.cap = None
             
             logger.info(f"Reconnecting in {DEFAULT_RECONNECT_DELAY} seconds...")
             time.sleep(DEFAULT_RECONNECT_DELAY)
@@ -541,6 +619,9 @@ def main():
         logger.info(f"  Random Bounding Boxes: DISABLED (set RANDOM_BOXES=true to enable)")
     if use_https:
         logger.info(f"  SSL Verification: {os.getenv('VERIFY_SSL', 'false')}")
+    
+    # Log startup to FPS log file
+    fps_logger.info(f"=== Producer Started === RTSP_URL={rtsp_url},Target_FPS={target_fps},Stream_ID={stream_id}")
     
     producer = RTSPProducer(
         rtsp_url=rtsp_url,
